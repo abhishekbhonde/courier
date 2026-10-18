@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #ffffff;
+  --panel: #f7f7f8;
+  --elevated: #ffffff;
+  --hover: #eeeef0;
+  --border: #e4e4e7;
+  --fg: #18181b;
+  --muted: #6b7280;
+  --accent: #ea580c;
+  --accent-hover: #c2410c;
+  --overlay: rgb(0 0 0 / 0.35);
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #17171a;
+  --panel: #1d1d21;
+  --elevated: #26262b;
+  --hover: #2d2d33;
+  --border: #323239;
+  --fg: #e4e4e7;
+  --muted: #9a9aa3;
+  --accent: #f97316;
+  --accent-hover: #fb8a3c;
+  --overlay: rgb(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-elevated: var(--elevated);
+  --color-hover: var(--hover);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-overlay: var(--overlay);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* CodeMirror should blend into the panel it sits in. */
+.cm-editor {
+  height: 100%;
+  font-size: 12.5px;
+  background: transparent !important;
+}
+.cm-editor.cm-focused {
+  outline: none !important;
+}
+.cm-scroller {
+  font-family: var(--font-mono) !important;
+}
+.cm-gutters {
+  background: transparent !important;
+  border-right: 1px solid var(--border) !important;
+}

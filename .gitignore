@@ -1,0 +1,9 @@
+/bin/
+/.dev/
+node_modules/
+*.tsbuildinfo
+.DS_Store
+
+# Built UI is embedded into the Go binary; only the placeholder is tracked.
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
