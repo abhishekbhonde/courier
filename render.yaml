@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: courier-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # A persistent disk (for SQLite) needs a paid instance type.
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: courier-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: COURIER_TOKEN
+        generateValue: true
+      # e.g. courier-api.onrender.com,courier.vercel.app
+      - key: COURIER_ALLOW_HOSTS
+        sync: false
+      # e.g. https://courier.vercel.app
+      - key: COURIER_ALLOW_ORIGINS
+        sync: false

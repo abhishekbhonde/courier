@@ -9,6 +9,8 @@ import type {
   SavedRequest,
   Settings,
 } from "./types";
+import { storage } from "./store/storage";
+import { prompt } from "./store/ui";
 
 export class ApiError extends Error {
   constructor(
@@ -19,19 +21,51 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(path, {
-      method,
-      signal,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    throw new ApiError("Cannot reach the Courier server. Is it running?", 0);
+// A hosted server requires an access token (COURIER_TOKEN); a local one doesn't.
+const TOKEN_KEY = "courier.token";
+let tokenPrompt: Promise<string | null> | null = null;
+
+// askToken shows one prompt no matter how many requests were rejected at once.
+function askToken(): Promise<string | null> {
+  tokenPrompt ??= prompt({
+    title: "Access token required",
+    label: "This Courier server needs its access token",
+    confirmText: "Connect",
+    secret: true,
+  }).then((t) => {
+    tokenPrompt = null;
+    t = t?.trim() || null;
+    if (t) storage.set(TOKEN_KEY, t);
+    return t;
+  });
+  return tokenPrompt;
+}
+
+async function send(path: string, init: RequestInit): Promise<Response> {
+  for (let retried = false; ; retried = true) {
+    const token = storage.get(TOKEN_KEY);
+    const headers = new Headers(init.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    let res: Response;
+    try {
+      res = await fetch(path, { ...init, headers });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      throw new ApiError("Cannot reach the Courier server. Is it running?", 0);
+    }
+    if (res.status !== 401 || retried) return res;
+    if (token) storage.set(TOKEN_KEY, null);
+    if (!(await askToken())) return res;
   }
+}
+
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await send(path, {
+    method,
+    signal,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   let data: unknown;
@@ -60,7 +94,12 @@ export const api = {
     create: (c: Partial<Collection>) => post<Collection>("/api/collections", c),
     update: (c: Collection) => put<Collection>(`/api/collections/${c.id}`, c),
     remove: (id: string) => del(`/api/collections/${id}`),
-    exportUrl: (id: string) => `/api/collections/${id}/export`,
+    export: async (id: string) => {
+      const res = await send(`/api/collections/${id}/export`, {});
+      if (!res.ok) throw new ApiError(res.statusText, res.status);
+      const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1];
+      return { blob: await res.blob(), filename: name ?? "collection.json" };
+    },
   },
   folders: {
     create: (f: { collectionId: string; parentId: string | null; name: string }) => post<Folder>("/api/folders", f),

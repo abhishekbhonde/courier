@@ -36,6 +36,7 @@ func run() error {
 		addr       = flag.String("addr", "127.0.0.1:7777", "listen address")
 		dbPath     = flag.String("db", "", "SQLite database path (default: <user config dir>/courier/courier.db)")
 		allowHosts = flag.String("allow-hosts", "", "comma-separated extra hostnames accepted in the Host header")
+		allowOrigs = flag.String("allow-origins", "", "comma-separated extra browser origins (e.g. https://courier.vercel.app) allowed to call the API")
 		open       = flag.Bool("open", false, "open the UI in a browser after starting")
 	)
 	flag.Parse()
@@ -58,15 +59,18 @@ func run() error {
 	}
 	defer st.Close()
 
-	var hosts []string
-	for _, h := range strings.Split(*allowHosts, ",") {
-		if h = strings.TrimSpace(h); h != "" {
-			hosts = append(hosts, h)
-		}
+	cfg := api.Config{
+		AllowedHosts:   splitList(*allowHosts),
+		AllowedOrigins: splitList(*allowOrigs),
+		// Read from the environment, not a flag, so it doesn't show up in ps.
+		Token: os.Getenv("COURIER_TOKEN"),
+	}
+	if cfg.Token == "" && (len(cfg.AllowedHosts) > 0 || len(cfg.AllowedOrigins) > 0) {
+		log.Warn("COURIER_TOKEN is not set: anyone who can reach this server can use it")
 	}
 
 	srv := &http.Server{
-		Handler:           api.New(st, log, api.Config{AllowedHosts: hosts}, web.Handler()),
+		Handler:           api.New(st, log, cfg, web.Handler()),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	ln, err := net.Listen("tcp", *addr)
@@ -99,6 +103,16 @@ func run() error {
 		}
 	}
 	return nil
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // displayAddr turns wildcard listen addresses into something clickable.

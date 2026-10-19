@@ -166,3 +166,53 @@ func TestGuard(t *testing.T) {
 		t.Errorf("same origin: %d", resp.StatusCode)
 	}
 }
+
+func TestTokenAndAllowedOrigins(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	cfg := Config{AllowedOrigins: []string{"https://ui.example"}, Token: "s3cret"}
+	srv := httptest.NewServer(New(st, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, nil))
+	t.Cleanup(srv.Close)
+
+	do := func(origin, auth string) int {
+		req, _ := http.NewRequest("GET", srv.URL+"/api/collections", nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if got := do("", ""); got != http.StatusUnauthorized {
+		t.Errorf("no token: %d", got)
+	}
+	if got := do("", "Bearer wrong"); got != http.StatusUnauthorized {
+		t.Errorf("wrong token: %d", got)
+	}
+	if got := do("", "Bearer s3cret"); got != http.StatusOK {
+		t.Errorf("valid token: %d", got)
+	}
+	if got := do("https://ui.example", "Bearer s3cret"); got != http.StatusOK {
+		t.Errorf("allowed origin: %d", got)
+	}
+	if got := do("https://evil.example", "Bearer s3cret"); got != http.StatusForbidden {
+		t.Errorf("foreign origin: %d", got)
+	}
+
+	// Health checks need neither a token nor a known Host.
+	req, _ := http.NewRequest("GET", srv.URL+"/api/health", nil)
+	req.Host = "10.0.0.5:10000"
+	if resp, _ := http.DefaultClient.Do(req); resp.StatusCode != http.StatusOK {
+		t.Errorf("health: %d", resp.StatusCode)
+	}
+}
