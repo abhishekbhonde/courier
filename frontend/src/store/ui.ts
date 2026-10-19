@@ -14,6 +14,7 @@ type Dialog =
       title: string;
       label?: string;
       initial: string;
+      secret: boolean;
       confirmText: string;
       resolve: (v: string | null) => void;
     }
@@ -48,7 +49,13 @@ export const useUI = create<UIState>((set) => ({
   closeModal: () => set({ modal: null }),
 }));
 
-export function prompt(opts: { title: string; label?: string; initial?: string; confirmText?: string }): Promise<string | null> {
+export function prompt(opts: {
+  title: string;
+  label?: string;
+  initial?: string;
+  confirmText?: string;
+  secret?: boolean;
+}): Promise<string | null> {
   return new Promise((resolve) => {
     useUI.setState({
       dialog: {
@@ -56,6 +63,7 @@ export function prompt(opts: { title: string; label?: string; initial?: string; 
         title: opts.title,
         label: opts.label,
         initial: opts.initial ?? "",
+        secret: opts.secret ?? false,
         confirmText: opts.confirmText ?? "OK",
         resolve: (v) => {
           useUI.setState({ dialog: null });

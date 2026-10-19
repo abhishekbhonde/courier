@@ -172,11 +172,15 @@ export async function moveRequest(r: SavedRequest, collectionId: string, folderI
   if (await attempt(() => api.requests.update({ ...r, collectionId, folderId }))) await refresh();
 }
 
-export function exportCollection(id: string) {
+export async function exportCollection(id: string) {
+  // Fetched rather than linked so the access token header is sent.
+  const file = await attempt(() => api.collections.export(id));
+  if (!file) return;
   const a = document.createElement("a");
-  a.href = api.collections.exportUrl(id);
-  a.download = "";
+  a.href = URL.createObjectURL(file.blob);
+  a.download = file.filename;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 
 // ---- environments ----

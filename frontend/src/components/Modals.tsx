@@ -518,7 +518,11 @@ export function DialogHost() {
       >
         <form onSubmit={(e) => (e.preventDefault(), value.trim() && submit())}>
           <Field label={dialog.label ?? "Name"}>
-            <Input autoFocus value={value} onChange={(e) => setValue(e.target.value)} onFocus={(e) => e.target.select()} />
+            <Input
+              autoFocus
+              type={dialog.secret ? "password" : "text"}
+              value={value}
+              onChange={(e) => setValue(e.target.value)} onFocus={(e) => e.target.select()} />
           </Field>
         </form>
       </Modal>

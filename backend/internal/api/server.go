@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -23,6 +24,12 @@ type Config struct {
 	// AllowedHosts are extra hostnames accepted in the Host header besides
 	// loopback names. This protects against DNS-rebinding attacks.
 	AllowedHosts []string
+	// AllowedOrigins are extra browser origins (e.g. "https://courier.vercel.app")
+	// accepted besides the server's own, for a UI hosted elsewhere that proxies /api.
+	AllowedOrigins []string
+	// Token, when set, must be sent as "Authorization: Bearer <token>" on every
+	// API call except the health check. Required on any public deployment.
+	Token string
 }
 
 type Server struct {
@@ -86,19 +93,29 @@ func New(st *store.Store, log *slog.Logger, cfg Config, static http.Handler) htt
 
 // guard rejects requests that could come from another website: foreign Host
 // headers (DNS rebinding), cross-origin Origins, and non-JSON bodies (which
-// browsers can send cross-site without a CORS preflight).
+// browsers can send cross-site without a CORS preflight). With a Token set it
+// also rejects unauthenticated API calls.
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Platform health checks arrive with arbitrary Host headers.
+		if r.Method == http.MethodGet && r.URL.Path == "/api/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if !s.hostAllowed(r.Host) {
 			writeError(w, http.StatusForbidden, "host not allowed: "+r.Host)
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
 			u, err := url.Parse(origin)
-			if err != nil || u.Host != r.Host {
+			if err != nil || (u.Host != r.Host && !s.originAllowed(origin)) {
 				writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
 				return
 			}
+		}
+		if s.cfg.Token != "" && strings.HasPrefix(r.URL.Path, "/api/") && !s.tokenValid(r) {
+			writeError(w, http.StatusUnauthorized, "missing or invalid access token")
+			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.ContentLength > 0) {
 			mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -130,6 +147,21 @@ func (s *Server) hostAllowed(hostport string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) originAllowed(origin string) bool {
+	origin = strings.TrimSuffix(origin, "/")
+	for _, o := range s.cfg.AllowedOrigins {
+		if strings.EqualFold(strings.TrimSuffix(o, "/"), origin) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) tokenValid(r *http.Request) bool {
+	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return ok && subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.Token)) == 1
 }
 
 type statusRecorder struct {
